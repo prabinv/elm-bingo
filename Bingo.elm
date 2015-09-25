@@ -5,10 +5,31 @@ import List
 import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (..)
+import Signal exposing (Address)
 import StartApp.Simple as StartApp
-import String exposing (toUpper, repeat, trimRight)
+import String exposing (toUpper, repeat, trimRight, isEmpty)
+import BingoUtils as Utils
 
 --  Model
+
+type alias Entry =
+  {
+    id: Int,
+    phrase: String,
+    points: Int,
+    wasSpoken: Bool
+  }
+
+type alias Model =
+  {
+    entries: List Entry,
+    phraseInput: String,
+    pointsInput: String,
+    nextID: Int
+  }
+
+
+newEntry : String -> Int -> Int -> Entry
 newEntry phrase points id =
   {
     phrase = phrase,
@@ -17,14 +38,18 @@ newEntry phrase points id =
     wasSpoken = False
   }
 
+initialModel : Model
 initialModel =
   {
     entries = [
-      newEntry "Doing Agile" 200 2,
-      newEntry "Cloud Enabled" 300 3,
-      newEntry "Future-Proof" 100 1,
-      newEntry "Rock-Star Ninja" 400 4
-    ]
+      -- newEntry "Doing Agile" 200 2,
+      -- newEntry "Cloud Enabled" 300 3,
+      -- newEntry "Future-Proof" 100 1,
+      -- newEntry "Rock-Star Ninja" 400 4
+    ],
+    phraseInput = "",
+    pointsInput = "",
+    nextID = 1
   }
 
 -- Update
@@ -34,7 +59,11 @@ type Action
   | Sort
   | Delete Int
   | Mark Int
+  | UpdatePhraseInput String
+  | UpdatePointsInput String
+  | AddEntry
 
+update : Action -> Model -> Model
 update action model =
   case action of
     NoOp ->
@@ -57,6 +86,29 @@ update action model =
       in
         { model | entries <- List.map updateEntry model.entries }
 
+    UpdatePhraseInput contents ->
+      { model | phraseInput <- contents }
+
+    UpdatePointsInput contents ->
+      { model | pointsInput <- contents }
+
+    AddEntry ->
+      let
+        entryToAdd =
+          newEntry model.phraseInput (Utils.parseInt model.pointsInput) model.nextID
+        isInvalid model =
+          String.isEmpty model.phraseInput || String.isEmpty model.pointsInput
+      in
+        if isInvalid model
+        then model
+        else
+          { model |
+            phraseInput <- "",
+            pointsInput <- "",
+            entries <- entryToAdd :: model.entries,
+            nextID <- model.nextID + 1
+          }
+
 
 -- View
 greet name color food  animal =
@@ -65,6 +117,7 @@ greet name color food  animal =
 multiply x y =
   x * y
 
+title : String -> Int -> Html
 title message times =
   message ++ " "
     |> toUpper
@@ -82,6 +135,7 @@ pageFooter =
         [ text "Volusion"]
     ]
 
+entryItem : Address Action -> Entry -> Html
 entryItem address entry =
   li
     [
@@ -96,17 +150,59 @@ entryItem address entry =
         [ ]
     ]
 
+totalPoints : List Entry -> Int
+totalPoints entries =
+  let
+    spokenEntries = List.filter .wasSpoken entries
+  in
+    List.foldl (\entry sum -> sum + entry.points) 0 spokenEntries
+
+totalItem :  Int -> Html
+totalItem total =
+  li
+    [ class "total" ]
+    [
+      span [ class "label" ] [ text "Total" ],
+      span [ class "points" ] [ text (toString total) ]
+    ]
+
+
+entryList : Address Action -> List Entry -> Html
 entryList address entries =
   let
-    entryItems =
-      List.map (entryItem address) entries
+    entryItems = List.map (entryItem address) entries
+    items = entryItems ++ [ totalItem (totalPoints entries) ]
   in
-    ul [ ] entryItems
+    ul [ ] items
 
+
+entryForm : Address Action -> Model -> Html
+entryForm address model =
+  div [ ]
+    [
+      input [
+        type' "text",
+        placeholder "Phrase",
+        value model.phraseInput,
+        autofocus True,
+        Utils.onInput address UpdatePhraseInput
+      ] [ ],
+      input [
+        type' "number",
+        placeholder "Points",
+        value model.pointsInput,
+        Utils.onInput address UpdatePointsInput
+      ] [ ],
+      button [ class "add", onClick address AddEntry ] [ text "Add"  ]
+    ]
+
+
+view : Address Action -> Model -> Html
 view address model =
   div [ ]
     [
       pageHeader,
+      entryForm address model,
       entryList address model.entries,
       button
         [ class "sort", onClick address Sort ]
@@ -115,6 +211,7 @@ view address model =
     ]
 
 -- Wire it all up
+main : Signal Html
 main =
   -- view (update Sort initialModel)
   -- initialModel
